@@ -1,3 +1,4 @@
+#[allow(unused_imports)]
 use ark_ff::{Field, One, Zero};
 use crate::circuit::layered::CircuitLayer;
 use crate::field::mle::DenseMultilinearExtension;

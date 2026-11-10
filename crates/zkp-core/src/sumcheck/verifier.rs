@@ -1,3 +1,4 @@
+#[allow(unused_imports)]
 use ark_ff::{Field, One, Zero};
 use crate::circuit::layered::CircuitLayer;
 use crate::sumcheck::univariate::UnivariateDegree2;
@@ -91,7 +92,6 @@ impl<F: Field> SumcheckVerifier<F> {
 mod tests {
     use super::*;
     use crate::circuit::gate::QuadGate;
-    use crate::field::mle::DenseMultilinearExtension;
     use crate::sumcheck::prover::SumcheckProver;
     use ark_ff::{Fp64, MontBackend, MontConfig, Zero};
 

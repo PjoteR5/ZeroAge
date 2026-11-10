@@ -1,3 +1,4 @@
+#[allow(unused_imports)]
 use ark_ff::{Field, One, Zero};
 
 /// Pojedynczy składnik formy kwadratowej: coeff * V_{j+1}[left] * V_{j+1}[right].

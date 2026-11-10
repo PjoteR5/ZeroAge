@@ -1,3 +1,4 @@
+#[allow(unused_imports)]
 use ark_ff::{Field, One, Zero};
 
 /// Jednowymiarowy wielomian stopnia co najwyżej 2: g(X) = a*X^2 + b*X + c.

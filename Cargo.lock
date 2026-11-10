@@ -453,6 +453,7 @@ name = "zkp-core"
 version = "0.1.0"
 dependencies = [
  "ark-ff",
+ "ark-serialize",
  "ark-std",
  "bincode",
  "digest",

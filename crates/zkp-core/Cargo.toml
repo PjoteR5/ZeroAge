@@ -7,14 +7,33 @@ license.workspace = true
 [dependencies]
 ark-ff = { workspace = true, features = ["std"] }
 ark-std = { workspace = true, features = ["std"] }
+ark-serialize = { version = "0.4.2", default-features = false }
 sha2 = { workspace = true }
 digest = { workspace = true }
 merlin = { workspace = true }
 serde = { workspace = true }
 bincode = { workspace = true }
 
-
-
 [[example]]
 name = "demo_mle"
 path = "examples/demo_mle.rs"
+
+[[example]]
+name = "demo_circuit"
+path = "examples/demo_circuit.rs"
+
+[[example]]
+name = "demo_sumcheck"
+path = "examples/demo_sumcheck.rs"
+
+[[example]]
+name = "demo_ligero"
+path = "examples/demo_ligero.rs"
+
+[[example]]
+name = "demo_fiat_shamir"
+path = "examples/demo_fiat_shamir.rs"
+
+[[example]]
+name = "demo_protocol25"
+path = "examples/demo_protocol25.rs"
