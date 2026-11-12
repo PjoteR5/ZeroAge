@@ -37,3 +37,7 @@ path = "examples/demo_fiat_shamir.rs"
 [[example]]
 name = "demo_protocol25"
 path = "examples/demo_protocol25.rs"
+
+[[example]]
+name = "bench_engine"
+path = "examples/bench_engine.rs"

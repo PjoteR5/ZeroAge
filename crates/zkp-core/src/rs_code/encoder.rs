@@ -1,4 +1,4 @@
-use ark_ff::Field;
+use ark_ff::{batch_inversion, Field};
 use std::marker::PhantomData;
 
 /// Koder i weryfikator kodów Reeda-Salomona nad ciałami pierwszymi (Zgodny z Rozdziałem 3.1 ZKP.pdf).
@@ -10,15 +10,56 @@ pub struct ReedSolomonEncoder<F: Field> {
     pub k: usize,
     /// Długość słowa kodowego po rozszerzeniu (n > k)
     pub n: usize,
+    /// Spłaszczona macierz parzystości o wymiarach (n - k) x k dla punktów x in k..n
+    parity_matrix: Vec<F>,
     _phantom: PhantomData<F>,
 }
 
 impl<F: Field> ReedSolomonEncoder<F> {
     pub fn new(k: usize, n: usize) -> Self {
         assert!(n >= k, "Długość słowa kodowego n ({}) musi być >= k ({})", n, k);
+
+        let num_parity = n - k;
+        let mut parity_matrix = Vec::with_capacity(num_parity * k);
+
+        if k > 0 && num_parity > 0 {
+            // Odwrotności liczb 1..(n-1) jednym batch_inversion
+            let mut inv_ints: Vec<F> = (1..n).map(|i| F::from(i as u64)).collect();
+            batch_inversion(&mut inv_ints);
+
+            // Silnie 0..k do wag barycentrycznych w_j = (-1)^{k-1-j} / (j! * (k-1-j)!)
+            let mut fact = Vec::with_capacity(k);
+            fact.push(F::one());
+            for j in 1..k {
+                fact.push(fact[j - 1] * F::from(j as u64));
+            }
+
+            let mut w = Vec::with_capacity(k);
+            for j in 0..k {
+                let mut den = fact[j] * fact[k - 1 - j];
+                if (k - 1 - j) % 2 == 1 {
+                    den = -den;
+                }
+                w.push(den);
+            }
+            batch_inversion(&mut w);
+
+            // Macierz Lagrange'a dla x in k..n: l_j(x) = (prod_{m=0}^{k-1} (x - m)) * w_j / (x - j)
+            for x_idx in k..n {
+                let mut phi_x = F::one();
+                for m in 0..k {
+                    phi_x *= F::from((x_idx - m) as u64);
+                }
+                for j in 0..k {
+                    parity_matrix.push(phi_x * w[j] * inv_ints[x_idx - j - 1]);
+                }
+            }
+        }
+
         Self {
             k,
             n,
+            parity_matrix,
             _phantom: PhantomData,
         }
     }
@@ -52,16 +93,19 @@ impl<F: Field> ReedSolomonEncoder<F> {
             self.k
         );
 
+        if self.k == 0 {
+            return vec![F::zero(); self.n];
+        }
+
         let mut codeword = Vec::with_capacity(self.n);
         // Pierwsze k punktów: p(0), ..., p(k-1) to po prostu wejście
         codeword.extend_from_slice(msg);
 
-        // Wyliczamy punkty k, k+1, ..., n-1 za pomocą interpolacji Lagrange'a
-        for x_idx in self.k..self.n {
-            let x_f = F::from(x_idx as u64);
+        // Wyliczamy punkty k, k+1, ..., n-1 z prekomputowanej macierzy parzystości
+        for row in self.parity_matrix.chunks_exact(self.k) {
             let mut eval = F::zero();
-            for (j, &val) in msg.iter().enumerate() {
-                eval += val * Self::lagrange_basis(self.k, j, x_f);
+            for (&val, &coeff) in msg.iter().zip(row.iter()) {
+                eval += val * coeff;
             }
             codeword.push(eval);
         }

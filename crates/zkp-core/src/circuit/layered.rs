@@ -18,6 +18,22 @@ pub fn eq_eval<F: Field>(x: &[F], y_index: usize) -> F {
     res
 }
 
+/// Buduje w czasie O(2^{x.len()}) tablicę wartości eq(x, y) dla wszystkich y in [0, 2^{x.len()}).
+pub fn build_eq_table<F: Field>(x: &[F]) -> Vec<F> {
+    let mut table = vec![F::zero(); 1 << x.len()];
+    table[0] = F::one();
+    for (k, &x_k) in x.iter().enumerate() {
+        let one_minus = F::one() - x_k;
+        let half = 1 << k;
+        for i in 0..half {
+            let val = table[i];
+            table[i + half] = val * x_k;
+            table[i] = val * one_minus;
+        }
+    }
+    table
+}
+
 /// Pojedyncza warstwa obwodu j łącząca wejścia z warstwy (j+1) z wyjściami warstwy j.
 #[derive(Clone, Debug)]
 pub struct CircuitLayer<F: Field> {
@@ -69,8 +85,38 @@ impl<F: Field> CircuitLayer<F> {
     /// zgodnie z rozdziałem 2.1 ZKP.pdf:
     /// \tilde{Q}_j(r_out, L, R) = sum_{gates} eq(r_out, out_wire) * sum_{terms} coeff * eq(L, left) * eq(R, right)
     pub fn eval_wiring_predicate(&self, r_out: &[F], left_point: &[F], right_point: &[F]) -> F {
-        // Konwencja ZKP.pdf: przewód 0 na każdym poziomie to stała 1:
-        // V_j[0] = 1 * V_{j+1}[0] * V_{j+1}[0], czyli składnik Q_j[0, 0, 0] = 1
+        if r_out.len() <= 20 && left_point.len() <= 20 && right_point.len() <= 20 {
+            let eq_out_tbl = build_eq_table(r_out);
+            let eq_l_tbl = build_eq_table(left_point);
+            let eq_r_tbl = build_eq_table(right_point);
+            let mask_out = eq_out_tbl.len() - 1;
+            let mask_l = eq_l_tbl.len() - 1;
+            let mask_r = eq_r_tbl.len() - 1;
+
+            // Konwencja ZKP.pdf: przewód 0 na każdym poziomie to stała 1:
+            // V_j[0] = 1 * V_{j+1}[0] * V_{j+1}[0], czyli składnik Q_j[0, 0, 0] = 1
+            let mut total = eq_out_tbl[0] * eq_l_tbl[0] * eq_r_tbl[0];
+
+            for gate in &self.gates {
+                let eq_out = eq_out_tbl[gate.out_wire & mask_out];
+                if eq_out.is_zero() {
+                    continue;
+                }
+
+                let mut gate_sum = F::zero();
+                for term in &gate.terms {
+                    gate_sum += term.coeff
+                        * eq_l_tbl[term.left & mask_l]
+                        * eq_r_tbl[term.right & mask_r];
+                }
+
+                total += eq_out * gate_sum;
+            }
+
+            return total;
+        }
+
+        // Fallback dla wyjątkowo dużych wymiarów (> 2^20)
         let mut total = eq_eval(r_out, 0) * eq_eval(left_point, 0) * eq_eval(right_point, 0);
 
         for gate in &self.gates {

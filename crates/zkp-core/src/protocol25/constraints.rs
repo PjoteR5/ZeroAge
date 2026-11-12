@@ -1,5 +1,5 @@
 use ark_ff::Field;
-use crate::circuit::layered::eq_eval;
+use crate::circuit::layered::{build_eq_table, eq_eval};
 use crate::protocol25::pad::MaskedTranscript;
 
 /// Współczynniki bazy Lagrange'a dla wielomianu stopnia 2 na węzłach {0, 1, 2}.
@@ -218,8 +218,17 @@ impl<F: Field> Protocol25Constraints<F> {
         // Ograniczenie dla W_L
         {
             let mut weights = vec![F::zero(); total_w_prime_len];
-            for k in 0..witness_len {
-                weights[k] = eq_eval(l_challenges, k);
+            if v_in <= 20 {
+                let eq_l = build_eq_table(l_challenges);
+                let copy_len = witness_len.min(eq_l.len());
+                weights[..copy_len].copy_from_slice(&eq_l[..copy_len]);
+                for k in copy_len..witness_len {
+                    weights[k] = eq_eval(l_challenges, k);
+                }
+            } else {
+                for k in 0..witness_len {
+                    weights[k] = eq_eval(l_challenges, k);
+                }
             }
             weights[idx_pad_l] = F::one();
             linear_constraints.push(LinearConstraint::new(weights, masked_transcript.masked_w_l));
@@ -228,8 +237,17 @@ impl<F: Field> Protocol25Constraints<F> {
         // Ograniczenie dla W_R
         {
             let mut weights = vec![F::zero(); total_w_prime_len];
-            for k in 0..witness_len {
-                weights[k] = eq_eval(r_challenges, k);
+            if v_in <= 20 {
+                let eq_r = build_eq_table(r_challenges);
+                let copy_len = witness_len.min(eq_r.len());
+                weights[..copy_len].copy_from_slice(&eq_r[..copy_len]);
+                for k in copy_len..witness_len {
+                    weights[k] = eq_eval(r_challenges, k);
+                }
+            } else {
+                for k in 0..witness_len {
+                    weights[k] = eq_eval(r_challenges, k);
+                }
             }
             weights[idx_pad_r] = F::one();
             linear_constraints.push(LinearConstraint::new(weights, masked_transcript.masked_w_r));
