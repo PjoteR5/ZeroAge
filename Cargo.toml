@@ -3,8 +3,7 @@ resolver = "2"
 members = [
     "crates/zkp-core",
     "crates/zkp-circuits",
-    # Kolejne pakiety zostaną odkomentowane w miarę ich tworzenia:
-    # "crates/mdoc-app",
+    "crates/mdoc-app",
 ]
 
 [workspace.package]

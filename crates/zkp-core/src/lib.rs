@@ -1,3 +1,5 @@
+#![allow(non_local_definitions)]
+
 pub mod circuit;
 pub mod field;
 pub mod ligero;
