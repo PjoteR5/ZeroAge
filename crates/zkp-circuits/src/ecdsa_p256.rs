@@ -5,7 +5,6 @@
 #![allow(non_local_definitions)]
 
 use ark_ff::{BigInt, Field, Fp256 as ArkFp256, MontBackend, MontConfig, One, PrimeField, Zero};
-use serde::{Deserialize, Serialize};
 
 use crate::sha256::sha256_digest;
 use zkp_core::circuit::gate::{QuadGate, QuadTerm};
@@ -25,7 +24,7 @@ pub type Fr256 = ArkFp256<MontBackend<P256ScalarConfig, 4>>;
 
 /// Punkt afiniczny na krzywej krótkiej Weierstrassa NIST P-256:
 /// $y^2 \equiv x^3 - 3x + b \pmod{p_{256}}$.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct P256Point {
     pub x: Fp256,
     pub y: Fp256,
@@ -186,7 +185,7 @@ pub fn sha256_digest_to_scalar(digest_be: &[u8; 32]) -> Fr256 {
 
 /// Podpis cyfrowy ECDSA nad krzywą NIST P-256: para skalarów $(r, s) \in (\mathbb{F}_{n_{256}}^*)^2$
 /// wraz z punktem świadka $R = (R_x, R_y)$ potrzebnym Proverowi w Algorytmie 4 (Frigo & shelat).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct EcdsaSignature {
     pub r: Fr256,
     pub s: Fr256,
@@ -407,7 +406,7 @@ pub fn build_p256_ecdsa_curve_circuit() -> LayeredCircuit<Fp256> {
         6,
         vec![gate_q_curve, gate_r_curve, gate_slope, gate_rx, gate_ry],
     );
-    LayeredCircuit::new(vec![layer0, layer1])
+    LayeredCircuit::new(vec![layer0, layer1], 10)
 }
 
 /// Generuje wektor świadka wejściowego (długość 10) dla obwodu `build_p256_ecdsa_curve_circuit`
@@ -480,7 +479,7 @@ mod tests {
         let circuit = build_p256_ecdsa_curve_circuit();
         let witness = build_p256_ecdsa_curve_witness(&issuer_kp.public_key, &digest, &sig)
             .expect("Poprawny świadek ECDSA musi zostać wygenerowany");
-        let evals = circuit.evaluate(&witness);
+        let evals = circuit.evaluate_all(&witness);
         let v_out = &evals[0];
 
         assert_eq!(v_out[0], Fp256::one());

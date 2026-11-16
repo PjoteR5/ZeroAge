@@ -101,7 +101,7 @@ pub fn build_age_and_validity_circuit<F: Field>() -> LayeredCircuit<F> {
     gates.push(QuadGate::assert_equal(196, 2, 6));
 
     let layer = CircuitLayer::new(0, AGE_CIRCUIT_IN_WIDTH, AGE_CIRCUIT_OUT_WIDTH, gates);
-    LayeredCircuit::new(vec![layer])
+    LayeredCircuit::new(vec![layer], AGE_CIRCUIT_IN_WIDTH)
 }
 
 /// Generuje wektor świadka o długości `AGE_CIRCUIT_IN_WIDTH` (200) dla obwodu wieku i ważności.
@@ -167,7 +167,7 @@ mod tests {
             digest_field,
             digest_field,
         );
-        let evals = circuit.evaluate(&witness);
+        let evals = circuit.evaluate_all(&witness);
         assert!(is_age_circuit_output_satisfied(&evals[0]));
     }
 
@@ -188,7 +188,7 @@ mod tests {
             digest_field,
             digest_field,
         );
-        let evals = circuit.evaluate(&witness);
+        let evals = circuit.evaluate_all(&witness);
         assert!(
             !is_age_circuit_output_satisfied(&evals[0]),
             "Atak niedomiaru modularnego 17-latka musi zostać odrzucony przez 64-bitową bramkę zakresu!"
@@ -212,7 +212,7 @@ mod tests {
             digest_field,
             digest_field,
         );
-        let evals = circuit.evaluate(&witness);
+        let evals = circuit.evaluate_all(&witness);
         assert!(!is_age_circuit_output_satisfied(&evals[0]));
     }
 }

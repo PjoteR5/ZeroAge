@@ -248,7 +248,7 @@ pub fn build_sha256_round_nonlinear_circuit<F: Field>() -> LayeredCircuit<F> {
     }
     let layer0 = CircuitLayer::new(0, 257, 97, gates_layer0);
 
-    LayeredCircuit::new(vec![layer0, layer1])
+    LayeredCircuit::new(vec![layer0, layer1], 193)
 }
 
 /// Buduje wektor świadka wejściowego (długość 193) dla obwodu `build_sha256_round_nonlinear_circuit`
@@ -323,7 +323,7 @@ mod tests {
         let (e, f, g) = (SHA256_H0[4], SHA256_H0[5], SHA256_H0[6]);
 
         let witness = build_sha256_round_witness::<Fp256>(e, f, g, a, b, c);
-        let layers_eval = circuit.evaluate(&witness);
+        let layers_eval = circuit.evaluate_all(&witness);
         let v_out = &layers_eval[0];
 
         let (circuit_ch, circuit_maj, bits_ok) = extract_sha256_round_outputs(v_out);
