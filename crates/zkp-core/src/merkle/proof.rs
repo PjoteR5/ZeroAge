@@ -1,7 +1,8 @@
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 /// Ścieżka uwierzytelniająca (Merkle Proof) dla pojedynczego liścia.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MerkleProof {
     /// Indeks liścia w drzewie
     pub leaf_index: usize,

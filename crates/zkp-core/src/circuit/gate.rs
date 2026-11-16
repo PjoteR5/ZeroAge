@@ -129,6 +129,70 @@ impl<F: Field> QuadGate<F> {
             ],
         )
     }
+
+    /// Bramka bitowego AND: V_j[out] = a * b dla a, b in {0, 1}.
+    pub fn and_bit(out_wire: usize, a: usize, b: usize) -> Self {
+        Self::mul(out_wire, a, b)
+    }
+
+    /// Bramka bitowego NOT: V_j[out] = 1 - a dla a in {0, 1}.
+    pub fn not_bit(out_wire: usize, a: usize) -> Self {
+        Self::new(
+            out_wire,
+            vec![
+                QuadTerm::constant(F::one()),
+                QuadTerm::linear(a, -F::one()),
+            ],
+        )
+    }
+
+    /// Bramka bitowego XOR w ciele F_p: V_j[out] = a + b - 2*a*b dla a, b in {0, 1}.
+    pub fn xor_bit(out_wire: usize, a: usize, b: usize) -> Self {
+        let two = F::one() + F::one();
+        Self::new(
+            out_wire,
+            vec![
+                QuadTerm::linear(a, F::one()),
+                QuadTerm::linear(b, F::one()),
+                QuadTerm::new(a, b, -two),
+            ],
+        )
+    }
+
+    /// Algebraiczna bramka SHA-256 `Ch(x, y, z) = (x & y) ^ (!x & z)` w jednej warstwie kwadratowej:
+    /// Dla bitów x, y, z in {0, 1}: Ch(x, y, z) = z + x * (y - z) = z + x*y - x*z.
+    pub fn sha256_ch_bit(out_wire: usize, x: usize, y: usize, z: usize) -> Self {
+        Self::new(
+            out_wire,
+            vec![
+                QuadTerm::linear(z, F::one()),
+                QuadTerm::new(x, y, F::one()),
+                QuadTerm::new(x, z, -F::one()),
+            ],
+        )
+    }
+
+    /// Algebraiczna bramka SHA-256 `Maj(x, y, z) = (x & y) ^ (x & z) ^ (y & z)` z wykorzystaniem
+    /// pomocniczego przewodu `xy_wire = x * y`:
+    /// Maj(x, y, z) = xy + x*z + y*z - 2*xy*z (stopień <= 2 względem (x, y, z, xy)).
+    pub fn sha256_maj_from_xy(
+        out_wire: usize,
+        x: usize,
+        y: usize,
+        z: usize,
+        xy_wire: usize,
+    ) -> Self {
+        let two = F::one() + F::one();
+        Self::new(
+            out_wire,
+            vec![
+                QuadTerm::linear(xy_wire, F::one()),
+                QuadTerm::new(x, z, F::one()),
+                QuadTerm::new(y, z, F::one()),
+                QuadTerm::new(xy_wire, z, -two),
+            ],
+        )
+    }
 }
 
 #[cfg(test)]
@@ -167,5 +231,35 @@ mod tests {
         // Test więzu binarnego dla liczby 5 (nie jest bitem): 5^2 - 5 = 20 mod 17 = 3 != 0
         let non_bit_gate = QuadGate::<F17>::assert_bit(5, 1); // V[1]=5
         assert_eq!(non_bit_gate.evaluate(&in_wires), F17::from(3u64));
+    }
+
+    #[test]
+    fn test_sha256_boolean_gates_truth_table() {
+        for bx in 0..=1u64 {
+            for by in 0..=1u64 {
+                for bz in 0..=1u64 {
+                    let bxy = bx & by;
+                    // V[0]=1, V[1]=x, V[2]=y, V[3]=z, V[4]=x*y
+                    let wires = vec![
+                        F17::one(),
+                        F17::from(bx),
+                        F17::from(by),
+                        F17::from(bz),
+                        F17::from(bxy),
+                    ];
+
+                    let xor_g = QuadGate::<F17>::xor_bit(1, 1, 2);
+                    assert_eq!(xor_g.evaluate(&wires), F17::from(bx ^ by));
+
+                    let ch_g = QuadGate::<F17>::sha256_ch_bit(2, 1, 2, 3);
+                    let expected_ch = (bx & by) ^ ((!bx & 1) & bz);
+                    assert_eq!(ch_g.evaluate(&wires), F17::from(expected_ch));
+
+                    let maj_g = QuadGate::<F17>::sha256_maj_from_xy(3, 1, 2, 3, 4);
+                    let expected_maj = (bx & by) ^ (bx & bz) ^ (by & bz);
+                    assert_eq!(maj_g.evaluate(&wires), F17::from(expected_maj));
+                }
+            }
+        }
     }
 }
