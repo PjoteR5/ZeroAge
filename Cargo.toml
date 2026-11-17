@@ -19,7 +19,7 @@ ark-std = { version = "0.4.0", default-features = false }
 
 # Haszowanie kryptograficzne SHA-256
 sha2 = "0.10"
-digest = "0.10"
+digest = "0.11"
 
 # Kody Reeda-Salomona
 reed-solomon-novelpoly = "1.0"
