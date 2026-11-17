@@ -1,11 +1,35 @@
-__pycache__/
-*.py[cod]
-.pytest_cache/
-.zkp_wallet/
-.venv/
-venv/
+# Rust build artifacts (BEZWZGLĘDNIE NIE WRZUCAĆ DO GIT - zajmuje setki MB)
+/target/
+target/
+**/*.rs.bk
+*.pdb
+
+# Lockfile aplikacji (w workspace utrzymywany dla deterministycznych buildów CI)
+# Cargo.lock
+
+# Środowisko i sekrety lokalne
 .env
 .env.*
 !.env.example
+.zkp_wallet/
 *.db
 *.sqlite3
+
+# Pozostałości po prototypie Python / lokalne środowiska wirtualne
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# Pliki tymczasowe edytorów i systemowe
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Ciężkie pliki dokumentacji roboczej
+*.pdf
