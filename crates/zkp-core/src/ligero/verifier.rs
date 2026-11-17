@@ -1,7 +1,7 @@
 use ark_ff::Field;
-use sha2::{Digest, Sha256};
 use crate::merkle::MerkleProof;
 use crate::rs_code::ReedSolomonEncoder;
+use crate::sha256::sha256;
 
 /// Verifier protokołu Ligero (IOP / MPC-in-the-head).
 pub struct LigeroVerifier<F: Field> {
@@ -37,12 +37,9 @@ impl<F: Field> LigeroVerifier<F> {
                 return false;
             }
 
-            // Liczymy skrót kolumny
+            // Liczymy skrót kolumny własną implementacją SHA-256
             let col_bytes = Self::serialize_column(col_vals);
-            let mut hasher = Sha256::new();
-            hasher.update(&col_bytes);
-            let mut leaf_hash = [0u8; 32];
-            leaf_hash.copy_from_slice(&hasher.finalize());
+            let leaf_hash = sha256(&col_bytes);
 
             // Sprawdzamy ścieżkę Merkle'a
             if !proof.verify(root, &leaf_hash) {

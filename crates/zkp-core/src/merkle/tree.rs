@@ -1,5 +1,5 @@
-use sha2::{Digest, Sha256};
 use crate::merkle::proof::MerkleProof;
+use crate::sha256::sha256;
 
 /// Binarne drzewo skrótów (Drzewo Merkle'a) zaimplementowane od zera na bazie SHA-256.
 /// Wykorzystywane w Ligero do zaangażowania zakodowanych kolumn świadka.
@@ -33,13 +33,10 @@ impl MerkleTree {
             let mut next_layer = Vec::with_capacity(prev_layer.len() / 2);
 
             for chunk in prev_layer.chunks(2) {
-                let mut hasher = Sha256::new();
-                hasher.update(&chunk[0]);
-                hasher.update(&chunk[1]);
-                let res = hasher.finalize();
-                let mut node = [0u8; 32];
-                node.copy_from_slice(&res);
-                next_layer.push(node);
+                let mut combined = [0u8; 64];
+                combined[..32].copy_from_slice(&chunk[0]);
+                combined[32..].copy_from_slice(&chunk[1]);
+                next_layer.push(sha256(&combined));
             }
 
             layers.push(next_layer);
@@ -51,17 +48,7 @@ impl MerkleTree {
     /// Tworzy Drzewo Merkle'a bezpośrednio z surowych bajtów danych (np. kolumn macierzy Ligero).
     /// Każdy ciąg bajtów jest najpierw haszowany do liścia za pomocą SHA-256.
     pub fn from_data_slices<T: AsRef<[u8]>>(data: &[T]) -> Self {
-        let leaves: Vec<[u8; 32]> = data
-            .iter()
-            .map(|d| {
-                let mut hasher = Sha256::new();
-                hasher.update(d.as_ref());
-                let res = hasher.finalize();
-                let mut leaf = [0u8; 32];
-                leaf.copy_from_slice(&res);
-                leaf
-            })
-            .collect();
+        let leaves: Vec<[u8; 32]> = data.iter().map(|d| sha256(d.as_ref())).collect();
 
         Self::new(leaves)
     }
@@ -104,13 +91,7 @@ mod tests {
         let root = tree.root();
 
         // Sprawdzamy dowód dla kolumny 2
-        let leaf2_hash = {
-            let mut hasher = Sha256::new();
-            hasher.update(col2);
-            let mut h = [0u8; 32];
-            h.copy_from_slice(&hasher.finalize());
-            h
-        };
+        let leaf2_hash = sha256(col2);
 
         let proof2 = tree.generate_proof(2);
         assert_eq!(proof2.leaf_index, 2);

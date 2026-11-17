@@ -1,6 +1,16 @@
+[package]
+name = "zeroage"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dev-dependencies]
+sha2 = { workspace = true }
+
 [workspace]
 resolver = "2"
 members = [
+    ".",
     "crates/zkp-core",
     "crates/zkp-circuits",
     "crates/mdoc-app",
