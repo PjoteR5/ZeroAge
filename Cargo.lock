@@ -198,12 +198,7 @@ name = "mdoc-app"
 version = "0.1.0"
 dependencies = [
  "ark-ff",
- "ark-serialize",
  "ark-std",
- "bincode",
- "digest",
- "serde",
- "sha2",
  "zkp-circuits",
  "zkp-core",
 ]

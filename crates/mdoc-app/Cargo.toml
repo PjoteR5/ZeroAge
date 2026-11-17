@@ -9,12 +9,7 @@ zkp-core = { workspace = true }
 zkp-circuits = { workspace = true }
 ark-ff = { workspace = true, features = ["std"] }
 ark-std = { workspace = true, features = ["std"] }
-ark-serialize = { version = "0.4.2", default-features = false }
-sha2 = { workspace = true }
-digest = { workspace = true }
-serde = { workspace = true }
-bincode = { workspace = true }
 
 [[example]]
-name = "demo_mdoc_flow"
-path = "examples/demo_mdoc_flow.rs"
+name = "demo_mvp"
+path = "examples/demo_mvp.rs"
