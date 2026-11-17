@@ -6,6 +6,7 @@ pub mod ligero;
 pub mod merkle;
 pub mod protocol25;
 pub mod rs_code;
+pub mod sha256;
 pub mod sumcheck;
 pub mod transcript;
 

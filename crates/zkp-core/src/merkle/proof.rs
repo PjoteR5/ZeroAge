@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
+use crate::sha256::sha256;
 
 /// Ścieżka uwierzytelniająca (Merkle Proof) dla pojedynczego liścia.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -22,18 +22,17 @@ impl MerkleProof {
         let mut idx = self.leaf_index;
 
         for sibling in &self.path {
-            let mut hasher = Sha256::new();
+            let mut combined = [0u8; 64];
             if idx % 2 == 0 {
                 // Liść jest lewym dzieckiem
-                hasher.update(&current);
-                hasher.update(sibling);
+                combined[..32].copy_from_slice(&current);
+                combined[32..].copy_from_slice(sibling);
             } else {
                 // Liść jest prawym dzieckiem
-                hasher.update(sibling);
-                hasher.update(&current);
+                combined[..32].copy_from_slice(sibling);
+                combined[32..].copy_from_slice(&current);
             }
-            let res = hasher.finalize();
-            current.copy_from_slice(&res);
+            current = sha256(&combined);
             idx /= 2;
         }
 
