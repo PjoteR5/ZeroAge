@@ -7,7 +7,7 @@ license.workspace = true
 [dependencies]
 ark-ff = { workspace = true, features = ["std"] }
 ark-std = { workspace = true, features = ["std"] }
-ark-serialize = { version = "0.4.2", default-features = false }
+ark-serialize = { version = "0.6.0", default-features = false }
 sha2 = { workspace = true }
 digest = { workspace = true }
 merlin = { workspace = true }
