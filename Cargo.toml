@@ -28,7 +28,7 @@ ark-ff = { version = "0.4.2", default-features = false }
 ark-std = { version = "0.4.0", default-features = false }
 
 # Haszowanie kryptograficzne SHA-256
-sha2 = "0.10"
+sha2 = "0.11"
 digest = "0.10"
 
 # Kody Reeda-Salomona
