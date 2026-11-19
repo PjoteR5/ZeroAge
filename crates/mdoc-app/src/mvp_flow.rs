@@ -1,9 +1,3 @@
-//! Minimalny przepływ MVP łączący:
-//! 1. Poświadczenie i podpis Wystawcy (`SignedAgeCredential` z `issuer.rs`),
-//! 2. Podział na dane publiczne i ukryte (`PublicAgeInputs` / `PrivateAgeWitness` z `date_witness.rs`),
-//! 3. Schemat zobowiązań (`AttributeCommitment` + `WitnessCommitment` z `commitment.rs`),
-//! 4. Obwód 64-bitowej weryfikacji pełnoletności ($\text{wiek} \ge 18$) oraz dowód ZKP (Sumcheck + Ligero).
-
 use ark_ff::One;
 use ark_std::rand::RngCore;
 

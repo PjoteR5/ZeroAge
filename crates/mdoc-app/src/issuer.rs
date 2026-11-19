@@ -1,13 +1,3 @@
-//! Moduł 3 (Piotr): **Wystawianie i podpisywanie poświadczeń (`CredentialIssuer`)**.
-//!
-//! Odpowiada za:
-//! 1. Zarządzanie asymetryczną parą kluczy Wystawcy na krzywej **NIST P-256 (`secp256r1`)**,
-//! 2. Generację losowej/deterministycznej soli `secret_salt` i utworzenie zobowiązania
-//!    kryptograficznego `AttributeCommitment` (`SHA-256`) do daty urodzenia obywatela,
-//! 3. Wystawienie i podpisanie poświadczenia algorytmem **ECDSA P-256 z SHA-256**,
-//! 4. Weryfikację autentyczności podpisu Wystawcy oraz przygotowanie pary
-//!    `(PublicAgeInputs, PrivateAgeWitness)` dla procesu dowodzenia ZKP.
-
 use crate::commitment::AttributeCommitment;
 use crate::date_witness::{
     default_min_age_18_seconds, CredentialDate, PrivateAgeWitness, PublicAgeInputs,

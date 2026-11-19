@@ -1,7 +1,3 @@
-//! Obwód porównywania dat ważności ($t_{\text{start}} \le t_{\text{now}} \le t_{\text{end}}$),
-//! weryfikacji pełnoletności ($\text{wiek} \ge 18$ bez niedomiaru modularnego w $\mathbb{F}_p$)
-//! oraz wiązania skrótu SHA-256 atrybutu z obiektu MSO (Rozdział 6 i 7 specyfikacji).
-
 use ark_ff::Field;
 use zkp_core::circuit::gate::{QuadGate, QuadTerm};
 use zkp_core::circuit::layered::{CircuitLayer, LayeredCircuit};
@@ -44,12 +40,6 @@ fn build_64bit_reconstruction_gate<F: Field>(
     QuadGate::new(out_wire, terms)
 }
 
-/// Buduje warstwowy obwód kwadratowy (`LayeredCircuit<F>`) weryfikujący:
-/// 1. Pełnoletność ($\text{wiek} \ge 18$) poprzez 64-bitową dekompozycję binarną (blokada ataku $17 - 18 \equiv p - 1 \pmod p$).
-/// 2. Ważność czasową poświadczenia MSO: $\text{valid\_from} \le t_{\text{now}} \le \text{valid\_until}$.
-/// 3. Zgodność skrótu SHA-256 atrybutu z podpisanej struktury MSO (`mso_attr_digest == witness_attr_digest`).
-///
-/// Dla uczciwego świadka wszystkie przewody wyjściowe `V_0[1..197]` przyjmują wartość `0`.
 pub fn build_age_and_validity_circuit<F: Field>() -> LayeredCircuit<F> {
     let mut gates = Vec::with_capacity(196);
     let age_18_f = F::from(AGE_18_SECONDS);

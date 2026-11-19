@@ -1,16 +1,3 @@
-//! Moduł 2 (Piotr): **Przygotowanie reprezentacji daty oraz podział na dane publiczne i ukryte**.
-//!
-//! Definiuje:
-//! 1. **`CredentialDate`:** kanoniczną reprezentację daty kalendarzowej `(year, month, day)`
-//!    z walidacją lat przestępnych, parsowaniem formatu ISO-8601 (`"YYYY-MM-DD"`), konwersją
-//!    do sekundowego znacznika czasu UTC (`u64`) oraz elementu ciała pierwszego $\mathbb{F}_{p_{256}}$.
-//! 2. **`PublicAgeInputs` (Dane Publiczne):** parametry jawne znane zarówno Dowodzącemu, jak i Weryfikatorowi
-//!    (aktualna data weryfikacji `t_now`, próg `AGE_18_SECONDS`, publiczne zobowiązanie do atrybutu,
-//!    klucz publiczny Wystawcy $PK_{\text{issuer}}$ oraz jednorazowy `nonce`).
-//! 3. **`PrivateAgeWitness` (Dane Ukryte):** tajne dane przechowywane wyłącznie w portfelu obywatela
-//!    (dokładna data urodzenia `birth_date`, tajna sól `secret_salt`, okres ważności oraz
-//!    64-bitowe rozkłady binarne różnic czasu zapobiegające atakowi zawinięcia modulo $p$).
-
 use crate::commitment::AttributeCommitment;
 use zkp_circuits::age_circuit::{build_age_and_validity_witness, AGE_18_SECONDS};
 use zkp_circuits::ecdsa_p256::P256Point;

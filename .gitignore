@@ -1,10 +1,10 @@
-# Rust build artifacts (BEZWZGLĘDNIE NIE WRZUCAĆ DO GIT - zajmuje setki MB)
+# Rust build artifacts
 /target/
 target/
 **/*.rs.bk
 *.pdb
 
-# Lockfile aplikacji (w workspace utrzymywany dla deterministycznych buildów CI)
+# Lockfile aplikacji
 # Cargo.lock
 
 # Środowisko i sekrety lokalne
@@ -15,7 +15,7 @@ target/
 *.db
 *.sqlite3
 
-# Pozostałości po prototypie Python / lokalne środowiska wirtualne
+# Lokalne środowiska wirtualne
 __pycache__/
 *.py[cod]
 .pytest_cache/
