@@ -1,16 +1,3 @@
-//! Moduł 1 (Piotr): **Implementacja i integracja schematu zobowiązań (Commitment Scheme)**.
-//!
-//! Realizuje dwa komplementarne poziomy zobowiązań kryptograficznych w wersji MVP:
-//! 1. **Zobowiązanie atrybutowe (`AttributeCommitment`):** klasyczny schemat *commit-and-open*
-//!    oparty o funkcję skrótu `SHA-256` oraz 128-bitową losową sól `secret_salt`:
-//!    $$C_{\text{attr}} = \text{SHA-256}(\text{"ZeroAge-MVP-AttrCommit-v1"} \parallel \text{salt} \parallel \text{attr\_name} \parallel \text{value})$$
-//!    Zapewnia własność **ukrywania (hiding)** (dzięki entropii soli `secret_salt`) oraz
-//!    **wiązania (binding)** (dzięki odporności `SHA-256` na kolizje).
-//! 2. **Zobowiązanie wektorowe do świadka ZKP (`WitnessCommitment`):** integracja z tablicowym
-//!    schematem zobowiązań **Ligero (`LigeroProver`)** z pakietu `zkp-core`, w którym wektor
-//!    świadka $w \in \mathbb{F}_{p_{256}}^N$ jest kodowany kodem Reeda-Solomona, maskowany
-//!    losowym wierszem One-Time Pad (ZK) i wiązany korzeniem drzewa Merkle'a `SHA-256`.
-
 use ark_ff::PrimeField;
 use ark_std::rand::RngCore;
 

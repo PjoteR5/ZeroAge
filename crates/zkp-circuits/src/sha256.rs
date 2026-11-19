@@ -1,13 +1,3 @@
-//! Pełna implementacja funkcji skrótu FIPS 180-4 SHA-256 od podstaw (from scratch)
-//! wraz z algebraicznym kompilatorem bramek kwadratowych `QuadGate` nad ciałem $\mathbb{F}_p$.
-//!
-//! Zgodnie z Rozdziałem 6 specyfikacji (*Anonymous Credentials from ECDSA*, Frigo & shelat):
-//! - W trybie natywnym wylicza standardowy 256-bitowy skrót SHA-256 dla bloków MSO i atrybutów.
-//! - W trybie obwodu ZKP wyraża funkcje boolowskie `Ch(e, f, g)` w 1 bramce kwadratowej na bit
-//!   ($z + x(y - z)$) oraz `Maj(a, b, c)` w 2 bramkach na bit ($xy + xz + yz - 2xyz$),
-//!   natomiast rotacje bitowe `ROTR` i przesunięcia `SHR` realizuje za 0 bramek poprzez
-//!   statyczną permutację indeksów przewodów.
-
 use ark_ff::Field;
 use zkp_core::circuit::gate::{QuadGate, QuadTerm};
 use zkp_core::circuit::layered::{CircuitLayer, LayeredCircuit};

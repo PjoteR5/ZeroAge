@@ -1,4 +1,4 @@
-# ZeroAge (MVP) — System Poświadczeń Wieku ZKP w Rust
+# ZeroAge (MVP) - System Poświadczeń Wieku ZKP w Rust
 
 Gałąź **`mvp`** prezentuje minimalny działający prototyp (MVP) systemu anonimowej weryfikacji pełnoletności ($\text{wiek} \ge 18$) w języku **Rust**, wyznaczający kierunek architektury opartej na pracy *Anonymous Credentials from ECDSA* (Frigo & shelat) ze zgodnością z **SHA-256** oraz **NIST P-256 (ECDSA)**.
 

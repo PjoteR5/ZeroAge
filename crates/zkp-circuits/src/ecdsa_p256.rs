@@ -1,7 +1,3 @@
-//! Natywna arytmetyka krzywej eliptycznej **NIST P-256 (`secp256r1`, FIPS 186-4)**,
-//! podpisy **ECDSA P-256 z SHA-256** oraz obwód weryfikacji punktów ECDSA (Algorytm 4
-//! z artykułu Frigo & shelat, *Anonymous Credentials from ECDSA*) nad ciałem $\mathbb{F}_{p_{256}}$.
-
 #![allow(non_local_definitions)]
 
 use ark_ff::{BigInt, Field, Fp256 as ArkFp256, MontBackend, MontConfig, One, PrimeField, Zero};

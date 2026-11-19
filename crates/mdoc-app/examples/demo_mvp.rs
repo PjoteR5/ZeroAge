@@ -1,4 +1,3 @@
-//! Minimalna demonstracja MVP systemu ZeroAge (Emisja poświadczeń, Zobowiązania, Dane Publiczne/Ukryte i Dowód ZKP):
 //! `cargo run -p mdoc-app --example demo_mvp`
 
 use ark_std::test_rng;
