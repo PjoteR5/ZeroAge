@@ -9,6 +9,9 @@ zkp-core = { workspace = true }
 zkp-circuits = { workspace = true }
 ark-ff = { workspace = true, features = ["std"] }
 ark-std = { workspace = true, features = ["std"] }
+ark-serialize = { version = "0.4.2", default-features = false }
+serde = { workspace = true }
+serde_json = { workspace = true }
 
 [[example]]
 name = "demo_mvp"

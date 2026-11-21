@@ -1,46 +1,81 @@
 use ark_ff::One;
 use ark_std::rand::RngCore;
+use serde::{Deserialize, Serialize};
 
-use crate::commitment::WitnessCommitment;
 use crate::date_witness::{CredentialDate, PublicAgeInputs};
 use crate::issuer::SignedAgeCredential;
-use zkp_circuits::age_circuit::{
-    build_age_and_validity_circuit, is_age_circuit_output_satisfied, AGE_CIRCUIT_IN_WIDTH,
-    AGE_CIRCUIT_OUT_WIDTH,
+use crate::revocation::{NonceReplayCache, RevocationRegistry};
+use crate::serialization::{
+    ecdsa_sig, fp256_vec, hex32, ligero_openings, masked_transcript,
 };
+use zkp_circuits::age_circuit::build_age_and_validity_circuit;
 use zkp_circuits::ecdsa_p256::{verify_ecdsa_message, EcdsaSignature, P256Point};
-use zkp_core::circuit::layered::eq_eval;
 use zkp_core::field::Fp256;
 use zkp_core::merkle::MerkleProof;
-use zkp_core::protocol25::constraints::Protocol25Constraints;
-use zkp_core::protocol25::pad::{LayerPads, MaskedRoundPoly, MaskedTranscript};
-use zkp_core::sumcheck::prover::SumcheckProver;
+use zkp_core::protocol25::{
+    MaskedTranscript, Protocol25Params, Protocol25Proof, Protocol25Prover, Protocol25Verifier,
+};
 use zkp_core::transcript::FiatShamirTranscript;
 
-const MVP_LIGERO_M: usize = 16;
-const MVP_LIGERO_K: usize = 20;
-const MVP_LIGERO_N: usize = 40;
+/// Bezpieczne parametry ZK-Ligero dla obwodu `is_over18` (długość rozszerzonego świadka = 187 elementów):
+/// - `m = 13` wierszy (12 wierszy danych po `data_cols = 16` elementów = 192 miejsca + 1 wiersz maskujący),
+/// - `k = 24` (`16` kolumn danych + `8` losowych kolumn maskujących w każdym wierszu dla pełnego ZK!),
+/// - `n = 64` ($n \ge 2k - 1 = 47$, z czego otwieramy `open_t = 8` kolumn wyłącznie z przedziału `[24, 64)`!).
+const MVP_LIGERO_M: usize = 13;
+const MVP_LIGERO_DATA_COLS: usize = 16;
+const MVP_LIGERO_K: usize = 24;
+const MVP_LIGERO_N: usize = 64;
 const MVP_LIGERO_OPEN_T: usize = 8;
 
-/// Minimalny pakiet dowodu ZKP w wersji MVP przesyłany do Weryfikatora.
-/// Zawiera wyłącznie dane publiczne, podpis Wystawcy nad zobowiązaniem oraz zamaskowany dowód ZKP
-/// (dokładna data urodzenia `birth_date` oraz sól `secret_salt` pozostają ukryte w portfelu).
-#[derive(Clone, Debug)]
+pub fn mvp_protocol25_params() -> Protocol25Params {
+    Protocol25Params::new(
+        MVP_LIGERO_M,
+        MVP_LIGERO_DATA_COLS,
+        MVP_LIGERO_K,
+        MVP_LIGERO_N,
+        MVP_LIGERO_OPEN_T,
+    )
+}
+
+/// Pakiet dowodu ZKP pełnoletności (`is_over18 == true`) przesyłany do Weryfikatora w postaci JSON.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MvpAgeProof {
     pub credential_id: u64,
     pub issuer_id: String,
     pub valid_from: CredentialDate,
     pub valid_until: CredentialDate,
+    #[serde(with = "ecdsa_sig")]
     pub issuer_signature: EcdsaSignature,
     pub public_inputs: PublicAgeInputs,
+    #[serde(with = "hex32")]
     pub ligero_root: [u8; 32],
+    #[serde(with = "masked_transcript")]
     pub masked_transcript: MaskedTranscript<Fp256>,
-    pub otp_quadratic_target: Fp256,
+    #[serde(with = "fp256_vec")]
     pub ligero_lin_comb: Vec<Fp256>,
+    #[serde(with = "fp256_vec")]
+    pub dot_product_codeword: Vec<Fp256>,
+    #[serde(with = "fp256_vec")]
+    pub quad_check_codeword: Vec<Fp256>,
+    #[serde(with = "ligero_openings")]
     pub ligero_openings: Vec<(usize, Vec<Fp256>, MerkleProof)>,
 }
 
-/// Generuje dowód ZKP pełnoletności ($\text{wiek} \ge 18$) na podstawie poświadczenia `SignedAgeCredential`.
+impl MvpAgeProof {
+    /// Serializuje paczkę dowodu ZKP do czytelnego formatu JSON (`NIZK JSON Payload`).
+    pub fn to_json_pretty(&self) -> Result<String, String> {
+        serde_json::to_string_pretty(self)
+            .map_err(|e| format!("Błąd serializacji dowodu ZKP do JSON: {e}"))
+    }
+
+    /// Odtwarza paczkę dowodu ZKP z tekstu JSON przesłanego od klienta.
+    pub fn from_json_str(json: &str) -> Result<Self, String> {
+        serde_json::from_str(json)
+            .map_err(|e| format!("Błąd deserializacji dowodu ZKP z JSON: {e}"))
+    }
+}
+
+/// Generuje dowód ZKP potwierdzający, że w certyfikacie podpisanym przez Wystawcę flaga `is_over18 == true`.
 pub fn generate_mvp_age_proof<R: RngCore>(
     credential: &SignedAgeCredential,
     verification_date: CredentialDate,
@@ -54,101 +89,33 @@ pub fn generate_mvp_age_proof<R: RngCore>(
     let (public_inputs, private_witness) =
         credential.into_public_and_private_inputs(verification_date, challenge_nonce);
 
-    if !private_witness.matches_commitment(&public_inputs.dob_commitment) {
-        return Err("Prywatny świadek (birth_date, secret_salt) nie otwiera zobowiązania dob_commitment");
+    if !private_witness.matches_commitment(&public_inputs.is_over18_commitment) {
+        return Err("Prywatny świadek (is_over18, secret_salt) nie otwiera zobowiązania is_over18_commitment");
     }
 
-    // 1. Synteza wektora przewodów świadka (dane publiczne + ukryte + 64-bitowy rozkład różnic dat)
     let circuit = build_age_and_validity_circuit::<Fp256>();
-    let layer = circuit.layers[0].clone();
+    let layer = &circuit.layers[0];
     let witness_wires = private_witness.synthesize_circuit_witness(&public_inputs);
 
-    let v_out = layer.evaluate(&witness_wires);
-    if !is_age_circuit_output_satisfied(&v_out) {
-        return Err("Obywatel nie spełnia warunku wiek >= 18 lub poświadczenie jest poza okresem ważności");
-    }
+    // Jawne więzy publicznych przewodów wejściowych (blokują podstawienie fałszywych dat lub stałej wire 0)
+    let bound_public_wires = [
+        (0usize, Fp256::one()),
+        (1usize, Fp256::from(public_inputs.t_now_seconds())),
+        (2usize, public_inputs.is_over18_commitment.to_field_element()),
+        (4usize, credential.valid_from.to_field_element()),
+        (5usize, credential.valid_until.to_field_element()),
+    ];
 
-    // 2. Maski One-Time Pad (Protokół 2.5) oraz zaangażowanie wektorowe Ligero
-    let omega_in = AGE_CIRCUIT_IN_WIDTH.next_power_of_two().trailing_zeros() as usize;
-    let num_rounds = 2 * omega_in;
-    let pads = LayerPads::<Fp256>::sample(num_rounds, rng);
-
-    let mut w_prime = witness_wires.clone();
-    w_prime.extend(pads.to_vec());
-
-    let witness_comm = WitnessCommitment::commit_witness(
-        &w_prime,
-        MVP_LIGERO_M,
-        MVP_LIGERO_K,
-        MVP_LIGERO_N,
-        rng,
-    );
-
-    // 3. Transkrypt Fiata-Shamira i zamaskowany Sumcheck
-    let mut transcript = init_mvp_transcript(&public_inputs, &witness_comm.root);
-    let omega_out = AGE_CIRCUIT_OUT_WIDTH.next_power_of_two().trailing_zeros() as usize;
-    let r_out: Vec<Fp256> = transcript.challenge_scalars(b"r_out", omega_out);
-    let claim_y = eq_eval(&r_out, 0);
-    transcript.append_field_element(b"claim_y", &claim_y);
-
-    let mut sc_prover = SumcheckProver::new(
-        layer.clone(),
-        Fp256::one(),
-        r_out.clone(),
-        r_out.clone(),
+    let params = mvp_protocol25_params();
+    let mut transcript = init_mvp_transcript(&public_inputs, &credential.valid_from, &credential.valid_until);
+    let p25_proof = Protocol25Prover::prove(
+        layer,
         &witness_wires,
-    );
-
-    let mut rounds = Vec::with_capacity(num_rounds);
-    let mut challenges = Vec::with_capacity(num_rounds);
-    for r_idx in 0..num_rounds {
-        let poly = sc_prover.compute_round_poly();
-        let masked = MaskedRoundPoly::mask(
-            [poly.eval_0, poly.eval_1, poly.eval_2],
-            pads.round_pads[r_idx],
-        );
-        transcript.append_field_elements(b"round_poly", &masked.as_array());
-        let ch: Fp256 = transcript.challenge_scalar(b"challenge_r");
-        sc_prover.receive_challenge(ch);
-        rounds.push(masked);
-        challenges.push(ch);
-    }
-
-    let (w_l, w_r) = sc_prover.compute_next_claims();
-    let masked_w_l = w_l + pads.pad_l;
-    let masked_w_r = w_r + pads.pad_r;
-    transcript.append_field_element(b"masked_w_l", &masked_w_l);
-    transcript.append_field_element(b"masked_w_r", &masked_w_r);
-
-    let masked_transcript = MaskedTranscript {
-        rounds,
-        masked_w_l,
-        masked_w_r,
-    };
-
-    let q_eval = layer.eval_wiring_predicate(
-        &r_out,
-        &challenges[0..omega_in],
-        &challenges[omega_in..2 * omega_in],
-    );
-    let constraints = Protocol25Constraints::build(
-        claim_y,
-        &challenges,
-        &masked_transcript,
-        q_eval,
-        witness_wires.len(),
-        omega_in,
-    );
-    debug_assert!(constraints.verify_all(&w_prime));
-
-    // 4. Otwarcie losowych kolumn zaangażowania Ligero
-    let mut row_weights: Vec<Fp256> =
-        transcript.challenge_scalars(b"row_weights", MVP_LIGERO_M - 1);
-    row_weights.push(Fp256::one());
-    let queried_cols =
-        transcript.challenge_indices(b"col_queries", MVP_LIGERO_N, MVP_LIGERO_OPEN_T);
-    let (ligero_lin_comb, ligero_openings) =
-        witness_comm.open_for_verifier(&row_weights, &queried_cols);
+        &bound_public_wires,
+        &params,
+        &mut transcript,
+        rng,
+    )?;
 
     Ok(MvpAgeProof {
         credential_id: credential.credential_id,
@@ -157,15 +124,16 @@ pub fn generate_mvp_age_proof<R: RngCore>(
         valid_until: credential.valid_until,
         issuer_signature: credential.issuer_signature,
         public_inputs,
-        ligero_root: witness_comm.root,
-        masked_transcript,
-        otp_quadratic_target: constraints.quad_constraint.target,
-        ligero_lin_comb,
-        ligero_openings,
+        ligero_root: p25_proof.ligero_root,
+        masked_transcript: p25_proof.masked_transcript,
+        ligero_lin_comb: p25_proof.ligero_lin_comb,
+        dot_product_codeword: p25_proof.dot_product_codeword,
+        quad_check_codeword: p25_proof.quad_check_codeword,
+        ligero_openings: p25_proof.ligero_openings,
     })
 }
 
-/// Weryfikuje po stronie Weryfikatora podpis Wystawcy na zobowiązaniu oraz nieinteraktywny dowód ZKP.
+/// Weryfikuje po stronie Weryfikatora podpis Wystawcy na certyfikacie oraz nieinteraktywny dowód ZKP (`is_over18 == true`).
 pub fn verify_mvp_age_proof(
     proof: &MvpAgeProof,
     trusted_issuer_pk: &P256Point,
@@ -174,11 +142,11 @@ pub fn verify_mvp_age_proof(
         return Err("Klucz publiczny Wystawcy w dowodzie nie zgadza się z kluczem zaufanym");
     }
 
-    // 1. Weryfikacja podpisu ECDSA P-256 Wystawcy nad zobowiązaniem dob_commitment
+    // 1. Weryfikacja podpisu ECDSA P-256 Wystawcy nad zobowiązaniem is_over18_commitment
     let signing_payload = SignedAgeCredential::canonical_signing_payload(
         proof.credential_id,
         &proof.issuer_id,
-        &proof.public_inputs.dob_commitment,
+        &proof.public_inputs.is_over18_commitment,
         &proof.valid_from,
         &proof.valid_until,
     );
@@ -186,92 +154,84 @@ pub fn verify_mvp_age_proof(
         return Err("Podpis ECDSA P-256 Wystawcy na zobowiązaniu jest nieprawidłowy");
     }
 
-    // 2. Odtworzenie wyzwań Fiata-Shamira i weryfikacja więzów obwodu wieku (Protokół 2.5)
+    // 2. Weryfikacja dowodu NIZK Protokołu 2.5 (Sumcheck + Ligero + więzy liniowe i kwadratowe)
     let circuit = build_age_and_validity_circuit::<Fp256>();
-    let layer = circuit.layers[0].clone();
-    let omega_in = AGE_CIRCUIT_IN_WIDTH.next_power_of_two().trailing_zeros() as usize;
-    let num_rounds = 2 * omega_in;
+    let layer = &circuit.layers[0];
+    let bound_public_wires = [
+        (0usize, Fp256::one()),
+        (1usize, Fp256::from(proof.public_inputs.t_now_seconds())),
+        (2usize, proof.public_inputs.is_over18_commitment.to_field_element()),
+        (4usize, proof.valid_from.to_field_element()),
+        (5usize, proof.valid_until.to_field_element()),
+    ];
 
-    if proof.masked_transcript.rounds.len() != num_rounds {
-        return Err("Nieprawidłowa liczba rund Sumchecka w dowodzie MVP");
+    let params = mvp_protocol25_params();
+    let mut transcript = init_mvp_transcript(&proof.public_inputs, &proof.valid_from, &proof.valid_until);
+    let p25_proof = Protocol25Proof {
+        ligero_root: proof.ligero_root,
+        masked_transcript: proof.masked_transcript.clone(),
+        ligero_lin_comb: proof.ligero_lin_comb.clone(),
+        dot_product_codeword: proof.dot_product_codeword.clone(),
+        quad_check_codeword: proof.quad_check_codeword.clone(),
+        ligero_openings: proof.ligero_openings.clone(),
+    };
+
+    Protocol25Verifier::verify(
+        layer,
+        &bound_public_wires,
+        &params,
+        &p25_proof,
+        &mut transcript,
+    )
+}
+
+/// Pełna weryfikacja po stronie Bramki Weryfikatora obejmująca:
+/// 1. Sprawdzenie Rejestru Unieważnień Wystawcy (`RevocationRegistry`),
+/// 2. Kontrolę świeżości jednorazowego wyzwania sesyjnego (`NonceReplayCache` — ochrona przed Replay Attack),
+/// 3. Weryfikację podpisu ECDSA P-256 Wystawcy oraz dowodu matematycznego ZKP Protokołu 2.5,
+/// 4. Oznaczenie wyzwania `challenge_nonce` jako zużytego po pozytywnej weryfikacji.
+pub fn verify_mvp_age_proof_full(
+    proof: &MvpAgeProof,
+    trusted_issuer_pk: &P256Point,
+    revocation_registry: &RevocationRegistry,
+    replay_cache: &mut NonceReplayCache,
+) -> Result<(), &'static str> {
+    if revocation_registry.is_revoked(proof.credential_id) {
+        return Err("Certyfikat został unieważniony w rejestrze Wystawcy");
     }
 
-    let mut transcript = init_mvp_transcript(&proof.public_inputs, &proof.ligero_root);
-    let omega_out = AGE_CIRCUIT_OUT_WIDTH.next_power_of_two().trailing_zeros() as usize;
-    let r_out: Vec<Fp256> = transcript.challenge_scalars(b"r_out", omega_out);
-    let claim_y = eq_eval(&r_out, 0);
-    transcript.append_field_element(b"claim_y", &claim_y);
-
-    let mut challenges = Vec::with_capacity(num_rounds);
-    for masked in &proof.masked_transcript.rounds {
-        transcript.append_field_elements(b"round_poly", &masked.as_array());
-        let ch: Fp256 = transcript.challenge_scalar(b"challenge_r");
-        challenges.push(ch);
+    if replay_cache.is_nonce_used(&proof.public_inputs.challenge_nonce) {
+        return Err("Wykryto atak powtórzeniowy (Replay Attack): challenge_nonce został już zużyty");
     }
 
-    transcript.append_field_element(b"masked_w_l", &proof.masked_transcript.masked_w_l);
-    transcript.append_field_element(b"masked_w_r", &proof.masked_transcript.masked_w_r);
+    verify_mvp_age_proof(proof, trusted_issuer_pk)?;
 
-    let q_eval = layer.eval_wiring_predicate(
-        &r_out,
-        &challenges[0..omega_in],
-        &challenges[omega_in..2 * omega_in],
-    );
-    let constraints = Protocol25Constraints::build(
-        claim_y,
-        &challenges,
-        &proof.masked_transcript,
-        q_eval,
-        AGE_CIRCUIT_IN_WIDTH,
-        omega_in,
-    );
-    if constraints.quad_constraint.target != proof.otp_quadratic_target {
-        return Err("Weryfikacja ograniczenia kwadratowego Protokołu 2.5 nie powiodła się");
-    }
-
-    // 3. Weryfikacja otwarcia zaangażowania wektorowego Ligero (drzewo Merkle + kod RS)
-    let mut row_weights: Vec<Fp256> =
-        transcript.challenge_scalars(b"row_weights", MVP_LIGERO_M - 1);
-    row_weights.push(Fp256::one());
-    let expected_cols =
-        transcript.challenge_indices(b"col_queries", MVP_LIGERO_N, MVP_LIGERO_OPEN_T);
-
-    for ((idx, _, _), exp) in proof.ligero_openings.iter().zip(expected_cols.iter()) {
-        if idx != exp {
-            return Err("Niezgodność indeksów otwartych kolumn z wyzwaniami Fiata-Shamira");
-        }
-    }
-
-    if !WitnessCommitment::verify_opening(
-        &proof.ligero_root,
-        MVP_LIGERO_M,
-        MVP_LIGERO_K,
-        MVP_LIGERO_N,
-        &row_weights,
-        &proof.ligero_lin_comb,
-        &proof.ligero_openings,
-    ) {
-        return Err("Weryfikacja zobowiązania wektorowego Ligero nie powiodła się");
-    }
-
+    replay_cache.mark_nonce_used(proof.public_inputs.challenge_nonce);
     Ok(())
 }
 
 fn init_mvp_transcript(
     public_inputs: &PublicAgeInputs,
-    ligero_root: &[u8; 32],
+    valid_from: &CredentialDate,
+    valid_until: &CredentialDate,
 ) -> FiatShamirTranscript {
-    let mut t = FiatShamirTranscript::new(b"ZeroAge-MVP-AgeVerification-v1");
+    let mut t = FiatShamirTranscript::new(b"ZeroAge-MVP-IsOver18-v2");
     t.append_message(
         b"verification_date",
         &public_inputs.t_now_seconds().to_be_bytes(),
     );
-    t.append_message(b"min_age", &public_inputs.min_age_seconds.to_be_bytes());
-    t.append_root(b"dob_commitment", &public_inputs.dob_commitment.digest);
+    t.append_message(
+        b"valid_from",
+        &valid_from.to_timestamp_seconds().to_be_bytes(),
+    );
+    t.append_message(
+        b"valid_until",
+        &valid_until.to_timestamp_seconds().to_be_bytes(),
+    );
+    t.append_root(b"is_over18_commitment", &public_inputs.is_over18_commitment.digest);
     t.append_field_element(b"issuer_pk_x", &public_inputs.issuer_public_key.x);
     t.append_field_element(b"issuer_pk_y", &public_inputs.issuer_public_key.y);
     t.append_message(b"challenge_nonce", &public_inputs.challenge_nonce);
-    t.append_root(b"ligero_root", ligero_root);
     t
 }
 
@@ -290,23 +250,82 @@ mod tests {
         let valid_until = CredentialDate::parse_iso("2027-01-01").unwrap();
         let verify_date = CredentialDate::parse_iso("2026-11-17").unwrap();
 
-        // 1. Obywatel pełnoletni (ur. 2004-05-15 -> 22 lata)
+        // 1. Obywatel pełnoletni (ur. 2004-05-15 -> is_over18 = true)
         let adult_dob = CredentialDate::parse_iso("2004-05-15").unwrap();
         let adult_cred = issuer
             .issue_age_credential("Jan Kowalski", adult_dob, valid_from, valid_until)
             .unwrap();
+        assert!(adult_cred.private_witness.is_over18);
 
         let proof =
             generate_mvp_age_proof(&adult_cred, verify_date, [0xAAu8; 16], &mut rng).unwrap();
         assert!(verify_mvp_age_proof(&proof, &issuer.public_key()).is_ok());
 
-        // 2. Obywatel niepełnoletni (ur. 2010-08-20 -> 16 lat) -> odrzucony
+        // 2. Sprawdzenie, że żadna otwarta kolumna Ligero nie pochodzi z części systematycznej [0, k)
+        for (col_idx, _, _) in &proof.ligero_openings {
+            assert!(
+                *col_idx >= MVP_LIGERO_K,
+                "Wyciek ZK: otwarto kolumnę systematyczną {} < {}",
+                col_idx,
+                MVP_LIGERO_K
+            );
+        }
+
+        // 3. Test odporności na sfałszowanie transkryptu lub wielomianu iloczynu skalarnego
+        let mut forged_proof = proof.clone();
+        forged_proof.dot_product_codeword[0] += Fp256::one();
+        assert!(
+            verify_mvp_age_proof(&forged_proof, &issuer.public_key()).is_err(),
+            "Sfałszowany wielomian ograniczeń Protokołu 2.5 musi zostać odrzucony!"
+        );
+
+        // 4. Obywatel niepełnoletni (ur. 2010-08-20 -> is_over18 = false) -> odrzucony
         let minor_dob = CredentialDate::parse_iso("2010-08-20").unwrap();
         let minor_cred = issuer
             .issue_age_credential("Niepełnoletni", minor_dob, valid_from, valid_until)
             .unwrap();
+        assert!(!minor_cred.private_witness.is_over18);
         assert!(
             generate_mvp_age_proof(&minor_cred, verify_date, [0xBBu8; 16], &mut rng).is_err()
         );
+
+        // 5. Serializacja do JSON + pełna weryfikacja (Replay Cache + Rejestr Unieważnień)
+        let cred_json = adult_cred.to_json_pretty().unwrap();
+        let restored_cred = SignedAgeCredential::from_json_str(&cred_json).unwrap();
+        assert_eq!(adult_cred, restored_cred);
+
+        let proof_json = proof.to_json_pretty().unwrap();
+        let restored_proof = MvpAgeProof::from_json_str(&proof_json).unwrap();
+        assert_eq!(proof, restored_proof);
+
+        let mut replay_cache = NonceReplayCache::new();
+        assert!(verify_mvp_age_proof_full(
+            &restored_proof,
+            &issuer.public_key(),
+            &issuer.revocation_registry,
+            &mut replay_cache,
+        )
+        .is_ok());
+
+        // Ponowne wysłanie tego samego proof.json (Replay Attack) musi zostać zablokowane
+        assert!(verify_mvp_age_proof_full(
+            &restored_proof,
+            &issuer.public_key(),
+            &issuer.revocation_registry,
+            &mut replay_cache,
+        )
+        .is_err());
+
+        // Nowy dowód z unieważnionego certyfikatu musi zostać odrzucony
+        issuer.revoke_credential(adult_cred.credential_id, verify_date, "Zgłoszona utrata");
+        let fresh_proof =
+            generate_mvp_age_proof(&adult_cred, verify_date, [0xCCu8; 16], &mut rng).unwrap();
+        assert!(verify_mvp_age_proof_full(
+            &fresh_proof,
+            &issuer.public_key(),
+            &issuer.revocation_registry,
+            &mut replay_cache,
+        )
+        .is_err());
     }
 }

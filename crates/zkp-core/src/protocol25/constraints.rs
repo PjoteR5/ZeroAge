@@ -285,6 +285,68 @@ impl<F: Field> Protocol25Constraints<F> {
         }
     }
 
+    /// Dodaje więzy liniowe wiążące publiczne przewody wejściowe (np. `w[0] = 1`, `w[1] = t_now`, `w[2] = commitment`)
+    /// ze znanymi Weryfikatorowi wartościami publicznymi. Blokuje atak podmiany wejść publicznych przez Provera.
+    pub fn add_public_input_constraints(&mut self, public_inputs: &[(usize, F)]) {
+        for &(wire_idx, expected_val) in public_inputs {
+            assert!(
+                wire_idx < self.total_w_prime_len,
+                "Indeks publicznego przewodu ({wire_idx}) poza zakresem w' ({})",
+                self.total_w_prime_len
+            );
+            let mut weights = vec![F::zero(); self.total_w_prime_len];
+            weights[wire_idx] = F::one();
+            self.linear_constraints
+                .push(LinearConstraint::new(weights, expected_val));
+        }
+    }
+
+    /// Zwraca zlinearyzowane ograniczenie kwadratowe jako `LinearConstraint` nad rozszerzonym wektorem
+    /// $[w', \text{pad}_L \cdot \text{pad}_R]$ o długości `total_w_prime_len + 1`.
+    pub fn linearized_quad_constraint(&self) -> LinearConstraint<F> {
+        let ext_len = self.total_w_prime_len + 1;
+        let mut weights = vec![F::zero(); ext_len];
+        let qc = &self.quad_constraint;
+        weights[qc.idx_pad_ell_0] = qc.coeff_pad_ell[0];
+        weights[qc.idx_pad_ell_1] = qc.coeff_pad_ell[1];
+        weights[qc.idx_pad_ell_2] = qc.coeff_pad_ell[2];
+        weights[qc.idx_pad_l] = qc.coeff_pad_l;
+        weights[qc.idx_pad_r] = qc.coeff_pad_r;
+        weights[self.total_w_prime_len] = qc.coeff_quad; // przewód iloczynu pad_L * pad_R
+        LinearConstraint::new(weights, qc.target)
+    }
+
+    /// Łączy wszystkie ograniczenia liniowe ORAZ zlinearyzowane ograniczenie kwadratowe
+    /// w pojedyncze losowe ograniczenie liniowe nad wektorem $[w', \text{pad}_L \cdot \text{pad}_R]$.
+    pub fn combine_all_with_quad_wire(&self, weights: &[F], quad_weight: F) -> LinearConstraint<F> {
+        assert_eq!(
+            weights.len(),
+            self.linear_constraints.len(),
+            "Liczba wag musi odpowiadać liczbie ograniczeń liniowych"
+        );
+        let ext_len = self.total_w_prime_len + 1;
+        let mut combined_weights = vec![F::zero(); ext_len];
+        let mut combined_target = F::zero();
+
+        for (constraint, &beta) in self.linear_constraints.iter().zip(weights.iter()) {
+            combined_target += beta * constraint.target;
+            for (w_out, &w_in) in combined_weights[..self.total_w_prime_len]
+                .iter_mut()
+                .zip(constraint.weights.iter())
+            {
+                *w_out += beta * w_in;
+            }
+        }
+
+        let lin_quad = self.linearized_quad_constraint();
+        combined_target += quad_weight * lin_quad.target;
+        for (w_out, &w_in) in combined_weights.iter_mut().zip(lin_quad.weights.iter()) {
+            *w_out += quad_weight * w_in;
+        }
+
+        LinearConstraint::new(combined_weights, combined_target)
+    }
+
     /// Łączy wszystkie ograniczenia liniowe w pojedyncze losowe ograniczenie liniowe:
     /// $\mathbf{a}_{comb} = \sum_j \beta_j \mathbf{a}_j$, $b_{comb} = \sum_j \beta_j b_j$.
     /// Używane przez protokół Ligero do jednoetapowej weryfikacji wszystkich równości liniowych.

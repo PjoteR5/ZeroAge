@@ -78,6 +78,88 @@ impl<F: Field> EncodedMatrix<F> {
         Self { m, k, n, rows }
     }
 
+    /// Tworzy w pełni bezpieczną macierz ZK-Ligero z maskowaniem wewnątrzwierszowym (per-row blinding):
+    /// - Każdy z `m - 1` wierszy danych zawiera `data_cols` elementów świadka na pozycjach `0..data_cols`
+    ///   oraz `k - data_cols` losowych elementów maskujących na pozycjach `data_cols..k` (chroni przed interpolacją przy otwarciu $t \le k - \text{data\_cols}$ kolumn!).
+    /// - Ostatni wiersz `m - 1` jest losowym wierszem maskującym o zerowej sumie na pozycjach `0..data_cols`,
+    ///   służącym do maskowania wielomianu iloczynu skalarnego $P_{\text{dot}}(X)$.
+    pub fn from_witness_full_zk<R: RngCore>(
+        witness: &[F],
+        m: usize,
+        data_cols: usize,
+        k: usize,
+        n: usize,
+        rng: &mut R,
+    ) -> Self {
+        assert!(m >= 2, "Macierz ZK-Ligero wymaga co najmniej 1 wiersza danych i 1 wiersza maskującego");
+        assert!(
+            data_cols > 0 && data_cols < k,
+            "Liczba kolumn danych data_cols ({data_cols}) musi być w przedziale 1..k ({k})"
+        );
+        assert!(
+            (m - 1) * data_cols >= witness.len(),
+            "Wymiary (m - 1) x data_cols ({}) muszą pomieścić świadka ({})",
+            (m - 1) * data_cols,
+            witness.len()
+        );
+        let encoder = ReedSolomonEncoder::<F>::new(k, n);
+
+        let mut rows = Vec::with_capacity(m);
+        for i in 0..(m - 1) {
+            let start = i * data_cols;
+            let mut row = Vec::with_capacity(k);
+            for j in 0..data_cols {
+                let idx = start + j;
+                if idx < witness.len() {
+                    row.push(witness[idx]);
+                } else {
+                    row.push(F::zero());
+                }
+            }
+            // Losowy ogon wiersza na pozycjach data_cols..k (ochrona Zero-Knowledge przy otwarciu kolumn)
+            for _ in data_cols..k {
+                row.push(F::rand(rng));
+            }
+            rows.push(encoder.encode(&row));
+        }
+
+        // Ostatni wiersz (m - 1): losowy wiersz maskujący o sumie 0 na pozycjach 0..data_cols
+        let mut blind_row = Vec::with_capacity(k);
+        let mut sum_prefix = F::zero();
+        for _ in 0..(data_cols - 1) {
+            let r = F::rand(rng);
+            sum_prefix += r;
+            blind_row.push(r);
+        }
+        blind_row.push(-sum_prefix); // gwarantuje sum_{j=0}^{data_cols-1} blind_row[j] == 0
+        for _ in data_cols..k {
+            blind_row.push(F::rand(rng));
+        }
+        rows.push(encoder.encode(&blind_row));
+
+        Self { m, k, n, rows }
+    }
+
+    /// Tworzy macierz ZK-Ligero z gotowych wierszy o długości `k`, kodując każdy z nich
+    /// kodem Reeda-Solomona do długości `n`.
+    pub fn from_raw_rows(raw_rows: &[Vec<F>], k: usize, n: usize) -> Self {
+        assert!(!raw_rows.is_empty(), "Macierz musi mieć co najmniej 1 wiersz");
+        let encoder = ReedSolomonEncoder::<F>::new(k, n);
+        let rows = raw_rows
+            .iter()
+            .map(|r| {
+                assert_eq!(r.len(), k, "Każdy wiersz macierzy musi mieć długość k ({k})");
+                encoder.encode(r)
+            })
+            .collect::<Vec<_>>();
+        Self {
+            m: rows.len(),
+            k,
+            n,
+            rows,
+        }
+    }
+
     /// Pobiera wiersz macierzy o podanym indeksie (długość n)
     pub fn get_row(&self, row_idx: usize) -> &[F] {
         &self.rows[row_idx]

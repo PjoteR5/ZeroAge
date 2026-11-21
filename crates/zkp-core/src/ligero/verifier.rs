@@ -1,7 +1,6 @@
 use ark_ff::Field;
-use crate::merkle::MerkleProof;
+use crate::merkle::{MerkleProof, MerkleTree};
 use crate::rs_code::ReedSolomonEncoder;
-use crate::sha256::sha256;
 
 /// Verifier protokołu Ligero (IOP / MPC-in-the-head).
 pub struct LigeroVerifier<F: Field> {
@@ -32,20 +31,102 @@ impl<F: Field> LigeroVerifier<F> {
         root: &[u8; 32],
         openings: &[(usize, Vec<F>, MerkleProof)],
     ) -> bool {
+        let expected_depth = self.n.next_power_of_two().trailing_zeros() as usize;
         for (col_idx, col_vals, proof) in openings {
-            if *col_idx != proof.leaf_index || col_vals.len() != self.m {
+            if *col_idx >= self.n
+                || *col_idx != proof.leaf_index
+                || col_vals.len() != self.m
+                || proof.path.len() != expected_depth
+            {
                 return false;
             }
 
-            // Liczymy skrót kolumny własną implementacją SHA-256
+            // Liczymy skrót kolumny z prefiksem liścia 0x00 (domain separation)
             let col_bytes = Self::serialize_column(col_vals);
-            let leaf_hash = sha256(&col_bytes);
+            let leaf_hash = MerkleTree::hash_leaf(&col_bytes);
 
             // Sprawdzamy ścieżkę Merkle'a
             if !proof.verify(root, &leaf_hash) {
                 return false;
             }
         }
+        true
+    }
+
+    /// Weryfikuje w wiedzy zerowej kombinację ograniczeń liniowych $\langle \mathbf{a}, w' \rangle = b$
+    /// na otwartych kolumnach z części parzystości `[k, n)`.
+    ///
+    /// - `constraint_weights`: spłaszczone wagi ograniczenia liniowego dla `(m - 1)` wierszy danych,
+    /// - `expected_target`: oczekiwana suma iloczynu skalarnego $b$,
+    /// - `dot_product_codeword`: wielomian iloczynu skalarnego $P_{\text{dot}}(X)$ stopnia $< 2k - 1$ (długość $n$),
+    /// - `data_cols_per_row`: liczba kolumn danych $\ell \le k$ w każdym wierszu (pozostałe $k - \ell$ to maski ZK),
+    /// - `openings`: otwarte kolumny z przedziału `[k, n)`.
+    pub fn verify_dot_product_constraint(
+        &self,
+        constraint_weights: &[F],
+        expected_target: F,
+        dot_product_codeword: &[F],
+        data_cols_per_row: usize,
+        openings: &[(usize, Vec<F>, MerkleProof)],
+    ) -> bool {
+        if self.m < 2
+            || data_cols_per_row == 0
+            || data_cols_per_row > self.k
+            || dot_product_codeword.len() != self.n
+            || self.n < 2 * self.k - 1
+        {
+            return false;
+        }
+
+        // 1. Wszystkie otwierane kolumny MUSZĄ należeć do części parzystości [k, n),
+        //    aby nigdy nie ujawnić surowych kolumn systematycznych [0, k).
+        for (col_idx, col_vals, _) in openings {
+            if *col_idx < self.k || *col_idx >= self.n || col_vals.len() != self.m {
+                return false;
+            }
+        }
+
+        // 2. Sprawdzenie niskiego stopnia (< 2k - 1) wielomianu P_dot
+        let encoder_2k = ReedSolomonEncoder::<F>::new(2 * self.k - 1, self.n);
+        if !encoder_2k.verify_codeword(dot_product_codeword) {
+            return false;
+        }
+
+        // 3. Sprawdzenie, czy suma pierwszych `data_cols_per_row` ewaluacji daje oczekiwany cel `expected_target`
+        let mut sum_on_data = F::zero();
+        for j in 0..data_cols_per_row {
+            sum_on_data += dot_product_codeword[j];
+        }
+        if sum_on_data != expected_target {
+            return false;
+        }
+
+        // 4. Zakodowanie publicznych wierszy wag A_i(X) do długości n
+        let data_rows = self.m - 1;
+        let mut encoded_a_rows = Vec::with_capacity(data_rows);
+        for r in 0..data_rows {
+            let mut a_row = vec![F::zero(); self.k];
+            let start = r * data_cols_per_row;
+            for j in 0..data_cols_per_row {
+                if start + j < constraint_weights.len() {
+                    a_row[j] = constraint_weights[start + j];
+                }
+            }
+            encoded_a_rows.push(self.encoder.encode(&a_row));
+        }
+
+        // 5. Sprawdzenie zgodności P_dot(c) == W_{m-1}(c) + sum_{i=0}^{m-2} A_i(c) * W_i(c) na otwartych kolumnach
+        for (col_idx, col_vals, _) in openings {
+            let c = *col_idx;
+            let mut expected_c = col_vals[self.m - 1]; // wiersz maskujący iloczynu skalarnego
+            for i in 0..data_rows {
+                expected_c += encoded_a_rows[i][c] * col_vals[i];
+            }
+            if dot_product_codeword[c] != expected_c {
+                return false;
+            }
+        }
+
         true
     }
 

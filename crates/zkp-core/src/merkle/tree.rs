@@ -33,9 +33,10 @@ impl MerkleTree {
             let mut next_layer = Vec::with_capacity(prev_layer.len() / 2);
 
             for chunk in prev_layer.chunks(2) {
-                let mut combined = [0u8; 64];
-                combined[..32].copy_from_slice(&chunk[0]);
-                combined[32..].copy_from_slice(&chunk[1]);
+                let mut combined = [0u8; 65];
+                combined[0] = 0x01; // Prefiks węzła wewnętrznego (domain separation)
+                combined[1..33].copy_from_slice(&chunk[0]);
+                combined[33..].copy_from_slice(&chunk[1]);
                 next_layer.push(sha256(&combined));
             }
 
@@ -45,10 +46,18 @@ impl MerkleTree {
         Self { num_leaves, layers }
     }
 
+    /// Haszuje surowe bajty liścia z prefiksem separacji domen `0x00` (RFC 6962).
+    pub fn hash_leaf(data: &[u8]) -> [u8; 32] {
+        let mut buf = Vec::with_capacity(1 + data.len());
+        buf.push(0x00);
+        buf.extend_from_slice(data);
+        sha256(&buf)
+    }
+
     /// Tworzy Drzewo Merkle'a bezpośrednio z surowych bajtów danych (np. kolumn macierzy Ligero).
-    /// Każdy ciąg bajtów jest najpierw haszowany do liścia za pomocą SHA-256.
+    /// Każdy ciąg bajtów jest najpierw haszowany do liścia za pomocą SHA-256 z prefiksem `0x00`.
     pub fn from_data_slices<T: AsRef<[u8]>>(data: &[T]) -> Self {
-        let leaves: Vec<[u8; 32]> = data.iter().map(|d| sha256(d.as_ref())).collect();
+        let leaves: Vec<[u8; 32]> = data.iter().map(|d| Self::hash_leaf(d.as_ref())).collect();
 
         Self::new(leaves)
     }
@@ -91,7 +100,7 @@ mod tests {
         let root = tree.root();
 
         // Sprawdzamy dowód dla kolumny 2
-        let leaf2_hash = sha256(col2);
+        let leaf2_hash = MerkleTree::hash_leaf(col2);
 
         let proof2 = tree.generate_proof(2);
         assert_eq!(proof2.leaf_index, 2);

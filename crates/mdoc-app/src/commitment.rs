@@ -1,6 +1,8 @@
 use ark_ff::PrimeField;
 use ark_std::rand::RngCore;
+use serde::{Deserialize, Serialize};
 
+use crate::serialization::hex32;
 use zkp_circuits::sha256::sha256_digest;
 use zkp_core::field::Fp256;
 use zkp_core::ligero::prover::LigeroProver;
@@ -10,9 +12,10 @@ use zkp_core::merkle::MerkleProof;
 const ATTR_COMMIT_DOMAIN: &[u8] = b"ZeroAge-MVP-AttrCommit-v1:";
 
 /// Zobowiązanie kryptograficzne `SHA-256` do pojedynczego ukrytego atrybutu (np. daty urodzenia).
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AttributeCommitment {
     /// 32-bajtowy skrót zobowiązania `SHA-256(domain || salt || attr_name || value_be)`
+    #[serde(with = "hex32")]
     pub digest: [u8; 32],
 }
 

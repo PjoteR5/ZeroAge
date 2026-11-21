@@ -84,10 +84,33 @@ impl FiatShamirTranscript {
         max_exclusive: usize,
         count: usize,
     ) -> Vec<usize> {
+        self.challenge_indices_in_range(label, 0, max_exclusive, count)
+    }
+
+    /// Generuje `count` unikalnych losowych indeksów z przedziału `[min_inclusive, max_exclusive)`
+    /// przy użyciu losowania z odrzucaniem (rejection sampling) — bez modulo bias.
+    ///
+    /// Kluczowe dla bezpieczeństwa ZK-Ligero: pozwala losować kolumny wyłącznie z części
+    /// parzystości `[k, n)`, nigdy nie odkrywając systematycznych kolumn świadka `[0, k)`.
+    pub fn challenge_indices_in_range(
+        &mut self,
+        label: &'static [u8],
+        min_inclusive: usize,
+        max_exclusive: usize,
+        count: usize,
+    ) -> Vec<usize> {
         assert!(
-            count <= max_exclusive,
-            "Liczba żądanych indeksów ({count}) nie może przekraczać zakresu ({max_exclusive})"
+            min_inclusive < max_exclusive,
+            "Przedział [{min_inclusive}, {max_exclusive}) jest pusty"
         );
+        let span = max_exclusive - min_inclusive;
+        assert!(
+            count <= span,
+            "Liczba żądanych indeksów ({count}) nie może przekraczać rozmiaru przedziału ({span})"
+        );
+
+        let span_u64 = span as u64;
+        let limit = u64::MAX - (u64::MAX % span_u64);
 
         let mut indices = BTreeSet::new();
         let mut attempts = 0usize;
@@ -96,11 +119,14 @@ impl FiatShamirTranscript {
             let mut buf = [0u8; 8];
             self.transcript.challenge_bytes(label, &mut buf);
             let raw = u64::from_le_bytes(buf);
-            let idx = (raw as usize) % max_exclusive;
+            if raw >= limit {
+                continue;
+            }
+            let idx = min_inclusive + (raw % span_u64) as usize;
             indices.insert(idx);
 
             attempts += 1;
-            if attempts > 10_000 + count * 20 {
+            if attempts > 100_000 + count * 40 {
                 panic!("Przekroczono limit prób podczas losowania unikalnych indeksów Fiata-Shamira");
             }
         }
