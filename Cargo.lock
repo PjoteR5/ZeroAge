@@ -194,6 +194,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "65cd87c9a6d60536580b316ad985726104730a5151c99845f2490428ef91240a"
 
 [[package]]
+name = "mdoc-app"
+version = "0.1.0"
+dependencies = [
+ "ark-ff",
+ "ark-std",
+ "zkp-circuits",
+ "zkp-core",
+]
+
+[[package]]
 name = "merlin"
 version = "3.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -409,6 +419,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ccf3ec651a847eb01de73ccad15eb7d99f80485de043efb2f370cd654f4ea44b"
 
 [[package]]
+name = "zeroage"
+version = "0.1.0"
+dependencies = [
+ "sha2",
+]
+
+[[package]]
 name = "zerocopy"
 version = "0.8.63"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -446,6 +463,20 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.119",
+]
+
+[[package]]
+name = "zkp-circuits"
+version = "0.1.0"
+dependencies = [
+ "ark-ff",
+ "ark-serialize",
+ "ark-std",
+ "bincode",
+ "digest",
+ "serde",
+ "sha2",
+ "zkp-core",
 ]
 
 [[package]]

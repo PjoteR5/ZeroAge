@@ -1,0 +1,34 @@
+name: Rust ZKP CI
+
+on:
+  push:
+    branches: [main, Development, RustRebranding, mvp]
+  pull_request:
+    branches: [main, Development, RustRebranding, mvp]
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    name: Cargo Test & MSO Demo (Rust Stable)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo registry and target build
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run all workspace unit and integration tests
+        run: cargo test --workspace --verbose
+
+      - name: Run MVP showcase
+        run: cargo run -p mdoc-app --example demo_mvp

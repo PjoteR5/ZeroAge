@@ -1,13 +1,6 @@
 use ark_ff::Field;
 use ark_std::rand::RngCore;
 
-/// Zestaw masek One-Time Pad (OTP) dla pojedynczej redukcji warstwy w Protokole 2.5.
-///
-/// Zgodnie z Rozdziałem 2.3 artykułu Frigo & shelat:
-/// Wszystkie wiadomości przesyłane w trakcie protokołu Sumcheck są maskowane
-/// niezależnymi, jednostajnie losowymi elementami ciała $\mathbb{F}_p$.
-/// Maski te są dołączane do świadka i zaangażowane z góry w schemacie Ligero:
-/// $w' = (w, \mathbf{pad})$.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LayerPads<F: Field> {
     /// Maski dla poszczególnych rund sumchecka.

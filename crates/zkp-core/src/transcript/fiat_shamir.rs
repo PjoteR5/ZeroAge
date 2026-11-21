@@ -58,7 +58,7 @@ impl FiatShamirTranscript {
         self.transcript.append_message(label, &bytes);
     }
 
-    /// Generuje (wyciska) losowe wyzwanie skalarne w ciele $\mathbb{F}_p$.
+    /// Generuje losowe wyzwanie skalarne w ciele $\mathbb{F}_p$.
     ///
     /// Pobiera 64 bajty (512 bitów) ze stanu gąbki i mapuje modulo rząd ciała $p$,
     /// co dla krzywych 256-bitowych (np. P-256) gwarantuje pomijalny błąd

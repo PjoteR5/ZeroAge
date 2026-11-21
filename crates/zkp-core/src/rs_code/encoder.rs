@@ -1,7 +1,6 @@
 use ark_ff::{batch_inversion, Field};
 use std::marker::PhantomData;
 
-/// Koder i weryfikator kodów Reeda-Salomona nad ciałami pierwszymi (Zgodny z Rozdziałem 3.1 ZKP.pdf).
 /// Wiadomość o długości k jest interpretowana jako ewaluacje wielomianu stopnia < k w punktach {0, 1, ..., k-1}.
 /// Słowo kodowe o długości n to ewaluacje w punktach {0, 1, ..., n-1}.
 #[derive(Clone, Debug)]

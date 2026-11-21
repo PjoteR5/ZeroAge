@@ -1,17 +1,35 @@
-# Rust build artifacts (BEZWZGLĘDNIE NIE WRZUCAĆ DO GIT - zajmuje setki MB)
+# Rust build artifacts
 /target/
 target/
+**/*.rs.bk
+*.pdb
 
-# Lockfile aplikacji (w bibliotekach często ignorowany, w workspace opcjonalny)
+# Lockfile aplikacji
 # Cargo.lock
+
+# Środowisko i sekrety lokalne
+.env
+.env.*
+!.env.example
+.zkp_wallet/
+*.db
+*.sqlite3
+
+# Lokalne środowiska wirtualne
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
 
 # Pliki tymczasowe edytorów i systemowe
 *.swp
 *.swo
 *~
 .DS_Store
+Thumbs.db
 .vscode/
 .idea/
 
-# Jeśli nie chcesz trzymać ciężkich PDF-ów w repozytorium GitHub, odkomentuj poniższą linię:
+# Ciężkie pliki dokumentacji roboczej
 *.pdf

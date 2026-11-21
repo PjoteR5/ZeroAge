@@ -1,4 +1,5 @@
 use ark_ff::Field;
+use ark_std::rand::RngCore;
 use crate::ligero::matrix::EncodedMatrix;
 use crate::merkle::{MerkleProof, MerkleTree};
 
@@ -14,6 +15,22 @@ impl<F: Field> LigeroProver<F> {
         let matrix = EncodedMatrix::from_witness(witness, m, k, n);
 
         // Serializujemy każdą z n kolumn do bajtów i tworzymy z nich liście drzewa Merkle'a
+        let column_bytes: Vec<Vec<u8>> = (0..n).map(|c| matrix.serialize_column(c)).collect();
+        let merkle_tree = MerkleTree::from_data_slices(&column_bytes);
+
+        Self { matrix, merkle_tree }
+    }
+
+    /// Inicjalizuje Provera z dodatkowym losowym wierszem maskującym (One-Time Pad) na pozycji `m - 1`,
+    /// zapewniającym pełną wiedzę zerową (ZK) podczas otwierania kombinacji liniowych wierszy.
+    pub fn new_with_zk_blinding<R: RngCore>(
+        witness: &[F],
+        m: usize,
+        k: usize,
+        n: usize,
+        rng: &mut R,
+    ) -> Self {
+        let matrix = EncodedMatrix::from_witness_with_blinding(witness, m, k, n, rng);
         let column_bytes: Vec<Vec<u8>> = (0..n).map(|c| matrix.serialize_column(c)).collect();
         let merkle_tree = MerkleTree::from_data_slices(&column_bytes);
 

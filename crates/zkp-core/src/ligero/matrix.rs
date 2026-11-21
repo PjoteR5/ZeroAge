@@ -1,4 +1,5 @@
 use ark_ff::Field;
+use ark_std::rand::RngCore;
 use crate::rs_code::ReedSolomonEncoder;
 
 /// Macierz świadka Ligero o wymiarach m x n.
@@ -35,6 +36,44 @@ impl<F: Field> EncodedMatrix<F> {
             let encoded_row = encoder.encode(&row);
             rows.push(encoded_row);
         }
+
+        Self { m, k, n, rows }
+    }
+
+    /// Tworzy zakodowaną macierz Ligero wzbogaconą o dodatkowy losowy wiersz maskujący (One-Time Pad)
+    /// na ostatniej pozycji `m - 1`, zapewniający własność Zero-Knowledge dla kombinacji liniowych wierszy.
+    pub fn from_witness_with_blinding<R: RngCore>(
+        witness: &[F],
+        m: usize,
+        k: usize,
+        n: usize,
+        rng: &mut R,
+    ) -> Self {
+        assert!(m >= 2, "Macierz ZK-Ligero wymaga co najmniej 1 wiersza danych i 1 wiersza maskującego");
+        assert!(
+            (m - 1) * k >= witness.len(),
+            "Wymiary (m - 1) x k muszą pomieścić świadka przy aktywnym wierszu maskującym ZK"
+        );
+        let encoder = ReedSolomonEncoder::<F>::new(k, n);
+
+        let mut rows = Vec::with_capacity(m);
+        for i in 0..(m - 1) {
+            let start = i * k;
+            let mut row = Vec::with_capacity(k);
+            for j in 0..k {
+                let idx = start + j;
+                if idx < witness.len() {
+                    row.push(witness[idx]);
+                } else {
+                    row.push(F::zero());
+                }
+            }
+            rows.push(encoder.encode(&row));
+        }
+
+        // Ostatni wiersz (m - 1): jednostajnie losowy wektor maskujący u_blind in F^k
+        let blind_row: Vec<F> = (0..k).map(|_| F::rand(rng)).collect();
+        rows.push(encoder.encode(&blind_row));
 
         Self { m, k, n, rows }
     }
